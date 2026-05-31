@@ -33,7 +33,7 @@ app.use(cors({
     origin: (origin, callback) => {
         // Allow requests with no origin (mobile apps, curl, Postman)
         if (!origin) return callback(null, true);
-        if (allowedOrigins.includes(origin)) return callback(null, true);
+        if (allowedOrigins.includes(origin) || origin.endsWith('.vercel.app')) return callback(null, true);
         callback(new Error(`CORS policy: origin ${origin} not allowed`));
     },
     credentials: true,
@@ -51,6 +51,26 @@ const uploadsDir = isVercel ? '/tmp/uploads' : path.join(__dirname, 'uploads');
 
 if (!fs.existsSync(uploadsDir)) {
     fs.mkdirSync(uploadsDir, { recursive: true });
+}
+
+// On Vercel, copy pre-existing uploads from the bundle to /tmp/uploads so they can be served
+if (isVercel) {
+    const bundleUploadsDir = path.join(__dirname, 'uploads');
+    if (fs.existsSync(bundleUploadsDir)) {
+        try {
+            const files = fs.readdirSync(bundleUploadsDir);
+            files.forEach(file => {
+                const srcPath = path.join(bundleUploadsDir, file);
+                const destPath = path.join(uploadsDir, file);
+                if (!fs.existsSync(destPath)) {
+                    fs.copyFileSync(srcPath, destPath);
+                }
+            });
+            console.log(`[INFO] Copied ${files.length} uploads to temporary directory for serving`);
+        } catch (err) {
+            console.error('[ERROR] Failed to copy bundled uploads to /tmp/uploads:', err);
+        }
+    }
 }
 
 app.use('/uploads', express.static(uploadsDir, {
